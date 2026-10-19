@@ -9,9 +9,11 @@ export function buildPluginInfo(): InfoContract {
       "https://raw.githubusercontent.com/deretame/Breeze-plugin-copyComic/main/assets/u3.webp",
     describe: "拷贝漫画插件",
     version: PLUGIN_VERSION,
-    home: "https://github.com/deretame/Breeze-plugin-copyComic",
-    updateUrl: "https://api.github.com/repos/deretame/Breeze-plugin-copyComic/releases/latest",
-    npmName: "breeze-plugin-copy-comic",
+    home: "https://github.com/kl5212840-lang/Breeze-plugin-copyComic",
+    // This personal fork has no release yet. Do not silently update it from
+    // the upstream npm package or point users at a GitHub API 404.
+    updateUrl: "",
+    npmName: "",
     function: [
       {
         id: "recommend",

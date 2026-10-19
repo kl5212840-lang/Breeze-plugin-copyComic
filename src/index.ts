@@ -2382,7 +2382,7 @@ async function submitCopyLogin(
 
 async function getLoginBundle(): Promise<LoginBundleContract> {
   const username = await loadAuthUsername();
-  return buildLoginBundle(PLUGIN_ID, {
+  const bundle = buildLoginBundle(PLUGIN_ID, {
     title: "拷贝漫画登录",
     fields: [
       { key: "username", kind: "text", label: "用户名", required: true },
@@ -2392,6 +2392,16 @@ async function getLoginBundle(): Promise<LoginBundleContract> {
     submitText: "登录",
     values: { username },
   });
+  return {
+    ...bundle,
+    data: {
+      ...bundle.data,
+      // Registration is handled by the site's own form (captcha/invites may
+      // change). Breeze opens this HTTPS page in the system browser only.
+      registerUrl: "https://2026copy.com/web/login/?url=person%2Fhome",
+      registerLabel: "注册账号",
+    },
+  };
 }
 
 async function loginWithPassword(payload: LoginSubmitPayload = {}): Promise<LoginSubmitResult> {
