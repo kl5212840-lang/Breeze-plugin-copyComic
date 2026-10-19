@@ -620,9 +620,10 @@ async function queryFavoriteCollectId(comicId: string): Promise<number | null> {
   const apiBase = await resolveApiBase();
   const params = new URLSearchParams({ platform: "1" });
   const queryUrl = `${apiBase}/comic2/${encodeURIComponent(comicId)}/query?${params.toString()}`;
+  const headers = await getAuthedHeaders();
   let queryResp: CopyApiResponse<ComicQueryResult>;
   try {
-    queryResp = await fetchCopyApiWithHeaders<ComicQueryResult>(queryUrl, await getAuthedHeaders());
+    queryResp = await fetchCopyApiWithHeaders<ComicQueryResult>(queryUrl, headers);
   } catch (error) {
     const message = String((error as Error).message ?? "");
     const lowered = message.toLowerCase();
@@ -644,13 +645,14 @@ async function queryFavoriteCollectId(comicId: string): Promise<number | null> {
 
 async function addCopyFavorite(comicId: string): Promise<void> {
   const apiBase = await resolveApiBase();
+  const headers = await getAuthedHeaders();
   const uuid = await fetchComicUuid(comicId);
   const body = new URLSearchParams({ comic_id: uuid, is_collect: "1" }).toString();
   let resp: CopyApiResponse<null>;
   try {
     resp = (await ky
       .post(`${apiBase}/member/collect/comic?platform=1`, {
-        headers: await getAuthedHeaders(),
+        headers,
         body,
       })
       .json()) as CopyApiResponse<null>;
@@ -680,13 +682,14 @@ async function removeCopyFavoriteByComic(comicId: string): Promise<void> {
   }
   const apiBase = await resolveApiBase();
   const body = new URLSearchParams({ ids: String(collectId) }).toString();
+  const headers = await getAuthedHeaders();
   let resp: CopyApiResponse<unknown>;
   try {
     // ky.delete 不支持 body，改用 method DELETE 的通用请求。
     resp = (await ky(`${apiBase}/member/collect/comics?platform=1`, {
       method: "DELETE",
       headers: {
-        ...(await getAuthedHeaders()),
+        ...headers,
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
       },
       body,
@@ -2593,10 +2596,14 @@ async function getCloudFavoriteData(
     free_type: "1",
     ordering,
   });
+  // Missing credentials are a first-time sign-in state, not an expired session.
+  // Keep that structured error outside the request catch below.
+  const headers = await getAuthedHeaders();
   let json: CopyApiResponse<CollectApiData>;
   try {
-    json = await fetchCopyAuthedApi<CollectApiData>(
+    json = await fetchCopyApiWithHeaders<CollectApiData>(
       `${apiBase}/member/collect/comics?${params.toString()}`,
+      headers,
     );
   } catch (error) {
     const message = String((error as Error).message ?? "");
