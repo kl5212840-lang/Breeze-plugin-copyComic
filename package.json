@@ -1,6 +1,6 @@
 {
   "name": "breeze-plugin-copy-comic",
-  "version": "0.0.15",
+  "version": "0.0.17",
   "files": [
     "dist"
   ],
@@ -13,7 +13,8 @@
     "format:check": "oxfmt --check .",
     "build": "pnpm typecheck && node --import tsx build/generate-version.ts && node --import tsx build/generate-manifest.ts && cross-env NODE_OPTIONS=\"--import tsx\" rspack build && node --import tsx build/generate-brotli.ts",
     "dev": "pnpm dev:serve",
-    "dev:serve": "tsx dev-server.ts"
+    "dev:serve": "tsx dev-server.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "breeze-plugin-kit": "^0.16.0"

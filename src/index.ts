@@ -41,7 +41,6 @@ import {
   NOT_FOUND_IMAGE_URL,
   SettingsBundleContract,
   createActionItem,
-  createBasicMetadata,
   createImage,
   toStringMap,
 } from "./common";
@@ -54,11 +53,21 @@ import {
   SEARCH_PAGE_SIZE,
 } from "./config";
 import { buildPluginInfo } from "./get-info";
+import {
+  COPY_ORDER_OPTIONS,
+  copyAuthorReferences,
+  mapCopyComicListItem,
+  normalizeCopyComicRow,
+  normalizeCopySearchScope,
+  resolveCopyDiscoverFilters,
+} from "./catalog";
+import { loadCopyThemeOptions } from "./catalog_theme_cache";
+import { loadCopyChapterPages } from "./catalog_chapters";
+import { COPY_FALLBACK_THEMES } from "./catalog_themes";
 import type {
   CachedChapterContent,
   CachedGetChapterResult,
   ChapterApiData,
-  ChapterApiItem,
   ChapterContentInfo,
   ChapterContentItem,
   ChapterContentResult,
@@ -134,86 +143,12 @@ const RANK_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "所有", value: "所有" },
   { label: "轻小说", value: "轻小说" },
 ];
-const DISCOVER_THEME_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: "全部", value: "" },
-  { label: "爱情", value: "aiqing" },
-  { label: "欢乐向", value: "huanlexiang" },
-  { label: "冒险", value: "maoxian" },
-  { label: "奇幻", value: "qihuan" },
-  { label: "百合", value: "baihe" },
-  { label: "校园", value: "xiaoyuan" },
-  { label: "科幻", value: "kehuan" },
-  { label: "东方", value: "dongfang" },
-  { label: "耽美", value: "danmei" },
-  { label: "生活", value: "shenghuo" },
-  { label: "格斗", value: "gedou" },
-  { label: "轻小说", value: "qingxiaoshuo" },
-  { label: "其他", value: "qita" },
-  { label: "悬疑", value: "xuanyi" },
-  { label: "TL", value: "TL" },
-  { label: "萌系", value: "mengxi" },
-  { label: "神鬼", value: "shengui" },
-  { label: "职场", value: "zhichang" },
-  { label: "治愈", value: "zhiyu" },
-  { label: "节操", value: "jiecao" },
-  { label: "四格", value: "sige" },
-  { label: "长条", value: "changtiao" },
-  { label: "舰娘", value: "jianniang" },
-  { label: "搞笑", value: "gaoxiao" },
-  { label: "竞技", value: "jingji" },
-  { label: "伪娘", value: "weiniang" },
-  { label: "魔幻", value: "mohuan" },
-  { label: "热血", value: "rexue" },
-  { label: "性转换", value: "xingzhuanhuan" },
-  { label: "美食", value: "meishi" },
-  { label: "励志", value: "lizhi" },
-  { label: "彩色", value: "caise" },
-  { label: "后宫", value: "hougong" },
-  { label: "侦探", value: "zhentan" },
-  { label: "惊悚", value: "jingsong" },
-  { label: "AA", value: "AA" },
-  { label: "音乐舞蹈", value: "yinyuewudao" },
-  { label: "异世界", value: "yishijie" },
-  { label: "战争", value: "zhanzheng" },
-  { label: "历史", value: "lishi" },
-  { label: "机战", value: "jizhan" },
-  { label: "都市", value: "dushi" },
-  { label: "穿越", value: "chuanyue" },
-  { label: "C102", value: "C102" },
-  { label: "重生", value: "chongsheng" },
-  { label: "恐怖", value: "kongbu" },
-  { label: "C103", value: "C103" },
-  { label: "生存", value: "shengcun" },
-  { label: "C100", value: "C100" },
-  { label: "C104", value: "C104" },
-  { label: "C101", value: "C101" },
-  { label: "C99", value: "C99" },
-  { label: "C97", value: "C97" },
-  { label: "武侠", value: "wuxia" },
-  { label: "宅系", value: "zhaixi" },
-  { label: "C96", value: "C96" },
-  { label: "C105", value: "C105" },
-  { label: "C98", value: "C98" },
-  { label: "C95", value: "C95" },
-  { label: "转生", value: "zhuansheng" },
-  { label: "FATE", value: "FATE" },
-  { label: "无修正", value: "wuxiuzheng" },
-  { label: "仙侠", value: "xianxia" },
-  { label: "LoveLive", value: "LoveLive" },
-  { label: "杂志附赠写真集", value: "zazhifuzengxiezhenji" },
-];
 const DISCOVER_TOP_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "全部", value: "" },
   { label: "日本", value: "japan" },
   { label: "韩漫", value: "korea" },
   { label: "美漫", value: "west" },
   { label: "完结", value: "finish" },
-];
-const DISCOVER_ORDERING_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: "最新", value: "-datetime_updated" },
-  { label: "最旧", value: "datetime_updated" },
-  { label: "热度最高", value: "-popular" },
-  { label: "热度最低", value: "popular" },
 ];
 const SEARCH_SCOPE_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "全部", value: "" },
@@ -716,29 +651,8 @@ async function removeCopyFavoriteByComic(comicId: string): Promise<void> {
 function mapCollectComicToGrid(item: CollectApiItem) {
   const collectId = Number(item.uuid ?? 0);
   const comicMap = toStringMap(item.comic);
-  const authorsRaw = "author" in comicMap && Array.isArray(comicMap.author) ? comicMap.author : [];
-  const themesRaw = "theme" in comicMap && Array.isArray(comicMap.theme) ? comicMap.theme : [];
-  const statusMap = "status" in comicMap ? toStringMap(comicMap.status) : {};
-  const comic: SearchApiComic = {
-    name: "name" in comicMap ? String(comicMap.name ?? "") : "",
-    path_word: "path_word" in comicMap ? String(comicMap.path_word ?? "") : "",
-    cover: "cover" in comicMap ? String(comicMap.cover ?? "") : "",
-    author: authorsRaw.map((row) => ({
-      name: String(toStringMap(row).name ?? ""),
-    })),
-    popular: "popular" in comicMap ? Number(comicMap.popular ?? 0) : 0,
-    datetime_updated: "datetime_updated" in comicMap ? String(comicMap.datetime_updated ?? "") : "",
-    last_chapter_name:
-      "last_chapter_name" in comicMap ? String(comicMap.last_chapter_name ?? "") : "",
-    status: {
-      value: "value" in statusMap ? String(statusMap.value ?? "") : "",
-      display: "display" in statusMap ? String(statusMap.display ?? "") : "",
-    },
-    theme: themesRaw.map((row) => ({
-      name: String(toStringMap(row).name ?? ""),
-    })),
-  };
-  const grid = mapSearchComicToGrid(comic);
+  const comic = normalizeCopyComicRow(comicMap);
+  const grid = comic ? mapSearchComicToGrid(comic) : null;
   if (!grid) {
     return null;
   }
@@ -856,7 +770,7 @@ function buildChapterCacheKey(comicId: string, groups: DetailApiGroup[]) {
     .filter(Boolean)
     .sort()
     .join(",");
-  return `copyComic:chapters:v1:${comicId}:${groupKey}`;
+  return `copyComic:chapters:v2:${comicId}:${groupKey}`;
 }
 
 async function readChapterCache(cacheKey: string): Promise<MappedEpItem[] | null> {
@@ -1079,18 +993,12 @@ async function fetchAllGroupChapters(comicId: string, groups: DetailApiGroup[]) 
     const groupPathWord = String(group.path_word ?? "").trim();
     if (!groupPathWord) continue;
 
-    const params = new URLSearchParams({
-      limit: "500",
-      offset: "0",
+    const chapterList = await loadCopyChapterPages(async (offset, limit) => {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      const apiUrl = `${apiBase}/comic/${encodeURIComponent(comicId)}/group/${encodeURIComponent(groupPathWord)}/chapters?${params.toString()}`;
+      const chapterResp = await fetchCopyApi<ChapterApiData>(apiUrl);
+      return chapterResp.results;
     });
-    const apiUrl = `${apiBase}/comic/${encodeURIComponent(comicId)}/group/${encodeURIComponent(groupPathWord)}/chapters?${params.toString()}`;
-
-    const chapterResp = await fetchCopyApi<ChapterApiData>(apiUrl);
-
-    const chapterData = toStringMap(chapterResp.results);
-    const chapterList = (
-      Array.isArray(chapterData.list) ? chapterData.list : []
-    ) as ChapterApiItem[];
 
     const groupName = String(group.name ?? "").trim();
     const groupTitle = groupName || null;
@@ -1122,81 +1030,25 @@ async function fetchAllGroupChapters(comicId: string, groups: DetailApiGroup[]) 
 }
 
 function mapSearchComicToGrid(item: SearchApiComic) {
-  const comicId = String(item.path_word ?? "").trim();
-  if (!comicId) {
-    return null;
-  }
-
-  const title = String(item.name ?? "").trim() || `漫画 ${comicId}`;
-  const coverUrl = String(item.cover ?? "").trim();
-  const authorNames = Array.isArray(item.author)
-    ? item.author.map((row) => String(row?.name ?? "").trim()).filter(Boolean)
-    : [];
-  const statusText =
-    String(item.status?.display ?? "").trim() || String(item.status?.value ?? "").trim();
-  const themeNames = Array.isArray(item.theme)
-    ? item.theme.map((row) => String(row?.name ?? "").trim()).filter(Boolean)
-    : [];
-  const subtitle = [authorNames.join(" / "), statusText, item.last_chapter_name]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean)
-    .join(" · ");
-  const path = `comic/${comicId}/cover.jpg`;
-  const hotValue = Number(item.popular ?? 0);
-  const hot = Number.isFinite(hotValue) ? hotValue : 0;
-
+  const grid = mapCopyComicListItem(item);
+  if (!grid) return null;
   return {
-    source: PLUGIN_ID,
-    id: comicId,
-    title,
-    subtitle,
-    finished: /完结/.test(statusText),
-    likesCount: hot,
-    viewsCount: hot,
-    updatedAt: String(item.datetime_updated ?? "").trim(),
-    cover: {
-      id: comicId,
-      url: coverUrl || NOT_FOUND_IMAGE_URL,
-      path,
-      name: `${comicId}.jpg`,
-      extern: { path },
-    },
-    metadata: [
-      createBasicMetadata("author", "作者", authorNames),
-      createBasicMetadata("categories", "分类", themeNames),
-      createBasicMetadata("status", "状态", statusText ? [statusText] : []),
-      createBasicMetadata("latest", "更新", item.last_chapter_name ? [item.last_chapter_name] : []),
-      createBasicMetadata("works", "作品", []),
-      createBasicMetadata("actors", "角色", []),
-    ],
-    raw: item,
+    ...grid,
     extern: {
-      comicId,
-      pathWord: comicId,
+      ...grid.extern,
+      authorActions: copyAuthorReferences(item).map((author) => ({
+        label: author.name,
+        action: openTagAuthorListAction(`作者：${author.name}`, {
+          author: author.pathWord,
+          ordering: "-datetime_updated",
+        }),
+      })),
     },
   };
 }
 
 function mapRankBookToComic(book: { [key: string]: unknown }) {
-  return {
-    name: String(book.name ?? "").trim(),
-    path_word: String(book.path_word ?? "").trim(),
-    cover: String(book.cover ?? "").trim(),
-    author: Array.isArray(book.author)
-      ? book.author.map((row) => ({
-          name: String(toStringMap(row).name ?? "").trim(),
-        }))
-      : [],
-    popular: Number(book.popular ?? 0) || 0,
-    theme: Array.isArray(book.theme)
-      ? book.theme.map((row) => ({
-          name: String(toStringMap(row).name ?? "").trim(),
-        }))
-      : [],
-    status: { display: "", value: "" },
-    datetime_updated: "",
-    last_chapter_name: "",
-  } as SearchApiComic;
+  return book as SearchApiComic;
 }
 
 async function getHomeRecommend(payload: RecommendPayload = {}): Promise<ComicPagedListContract> {
@@ -1272,7 +1124,8 @@ async function getHomeNewest(payload: NewestPayload = {}): Promise<ComicPagedLis
   const data = toStringMap(json.results);
   const list = Array.isArray(data.list) ? data.list : [];
   const items = list
-    .map((row) => toStringMap(toStringMap(row).comic) as SearchApiComic)
+    .map(normalizeCopyComicRow)
+    .filter((item): item is SearchApiComic => item !== null)
     .map((item) => mapSearchComicToGrid(item))
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
@@ -1428,7 +1281,7 @@ async function getTagAuthorListFilterBundle(
           key: "ordering",
           kind: "choice",
           label: "排序",
-          options: DISCOVER_ORDERING_OPTIONS.map((item) => ({
+          options: COPY_ORDER_OPTIONS.map((item) => ({
             label: item.label,
             value: item.value,
             result: { extern: { ordering: item.value } },
@@ -1584,9 +1437,7 @@ async function getHomeDiscover(payload: RecommendPayload = {}): Promise<ComicPag
   const extern = toStringMap(payload.extern);
   const page = Math.max(1, Number(payload.page ?? 1) || 1);
   const offset = (page - 1) * HOME_PAGE_SIZE;
-  const theme = String(extern.theme ?? "").trim();
-  const top = String(extern.top ?? "").trim();
-  const ordering = String(extern.ordering ?? "-datetime_updated").trim() || "-datetime_updated";
+  const { theme, top, ordering } = resolveCopyDiscoverFilters(extern);
   const params = new URLSearchParams({
     limit: String(HOME_PAGE_SIZE),
     offset: String(offset),
@@ -1622,22 +1473,59 @@ async function getHomeDiscover(payload: RecommendPayload = {}): Promise<ComicPag
   };
 }
 
+const _themeRequests = new Map<string, Promise<Array<{ label: string; value: string }>>>();
+
+async function getDiscoverThemeOptions(apiBase: string) {
+  const current = _themeRequests.get(apiBase);
+  if (current) return current;
+  const key = `copyComic:themes:v1:${new URL(apiBase).host}`;
+  const request = loadCopyThemeOptions({
+    read: async () => unwrapStoredValue(await cache.get(key, null)),
+    write: (value) => cache.set(key, value),
+    fetch: async () => {
+      const response = await ky
+        .get(`${apiBase}/theme/comic/count`, {
+          searchParams: { limit: "500", offset: "0", platform: "1" },
+          headers: await getApiHeaders(),
+          timeout: 3500,
+          retry: 0,
+        })
+        .json<CopyApiResponse<SearchApiData>>();
+      const data = toStringMap(response.results);
+      const list = Array.isArray(data.list) ? data.list : [];
+      if (response.code !== 200 || Number(data.total ?? list.length) > list.length) {
+        throw new Error("Theme catalogue incomplete");
+      }
+      return list;
+    },
+    fallback: COPY_FALLBACK_THEMES,
+  });
+  _themeRequests.set(apiBase, request);
+  try {
+    return await request;
+  } finally {
+    if (_themeRequests.get(apiBase) === request) _themeRequests.delete(apiBase);
+  }
+}
+
 async function getHomeDiscoverFilterBundle(
   payload: { extern?: Record<string, unknown> } = {},
 ): Promise<FilterBundleContract> {
   const extern = toStringMap(payload.extern);
+  const themes = await getDiscoverThemeOptions(await resolveApiBase());
+  const values = resolveCopyDiscoverFilters(extern);
   return {
     source: PLUGIN_ID,
     scheme: {
       version: "1.0.0",
       type: "comicListFilter",
-      title: "发现（高级选项）",
+      title: "筛选漫画",
       fields: [
         {
           key: "theme",
           kind: "choice",
           label: "分类",
-          options: DISCOVER_THEME_OPTIONS.map((item) => ({
+          options: [{ label: "全部", value: "" }, ...themes].map((item) => ({
             label: item.label,
             value: item.value,
             result: { extern: { theme: item.value } },
@@ -1646,7 +1534,7 @@ async function getHomeDiscoverFilterBundle(
         {
           key: "top",
           kind: "choice",
-          label: "分区",
+          label: "范围",
           options: DISCOVER_TOP_OPTIONS.map((item) => ({
             label: item.label,
             value: item.value,
@@ -1657,7 +1545,7 @@ async function getHomeDiscoverFilterBundle(
           key: "ordering",
           kind: "choice",
           label: "排序",
-          options: DISCOVER_ORDERING_OPTIONS.map((item) => ({
+          options: COPY_ORDER_OPTIONS.map((item) => ({
             label: item.label,
             value: item.value,
             result: { extern: { ordering: item.value } },
@@ -1665,13 +1553,7 @@ async function getHomeDiscoverFilterBundle(
         },
       ],
     },
-    data: {
-      values: {
-        theme: String(extern.theme ?? ""),
-        top: String(extern.top ?? ""),
-        ordering: String(extern.ordering ?? "-datetime_updated"),
-      },
-    },
+    data: { values },
   };
 }
 
@@ -1724,7 +1606,7 @@ async function searchComic(payload: SearchPayload = {}): Promise<SearchResultCon
   const externPathWord = String(extern.pathWord ?? "").trim();
   const externApiUrl = String(extern.apiUrl ?? extern.searchUrl ?? extern.url ?? "").trim();
 
-  const scopeQType = String(extern.q_type ?? "").trim();
+  const scopeQType = normalizeCopySearchScope(extern.q_type);
 
   if (!keyword && !externApiUrl) {
     throw new Error("keyword 不能为空");
@@ -1733,6 +1615,12 @@ async function searchComic(payload: SearchPayload = {}): Promise<SearchResultCon
   const apiUrl = externApiUrl
     ? (() => {
         const parsed = new URL(externApiUrl);
+        if (parsed.pathname.endsWith("/search/comic")) {
+          parsed.searchParams.set(
+            "q_type",
+            normalizeCopySearchScope(extern.q_type ?? parsed.searchParams.get("q_type")),
+          );
+        }
         if (externPathWord && externSearchType === "theme") {
           parsed.searchParams.set("theme", externPathWord);
         }
@@ -1758,8 +1646,6 @@ async function searchComic(payload: SearchPayload = {}): Promise<SearchResultCon
         return `${apiBase}/search/comic?${params.toString()}`;
       })();
   const json = await fetchCopyApi<SearchApiData>(apiUrl);
-
-  console.log(`[api] searchComic json=${JSON.stringify(json)}`);
 
   if (Number(json.code ?? 0) !== 200) {
     throw new Error(json.message || "搜索失败");
@@ -1967,8 +1853,8 @@ async function getComicDetail(payload: ComicDetailPayload = {}): Promise<ComicDe
       extern: ep.extern,
     })),
     recommend: [],
-    totalViews: popular,
-    totalLikes: popular,
+    totalViews: 0,
+    totalLikes: 0,
     totalComments: totalComments,
     isFavourite,
     isLiked: false,

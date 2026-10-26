@@ -54,7 +54,8 @@ export type SearchApiComic = {
   name?: string;
   path_word?: string;
   cover?: string;
-  author?: Array<{ name?: string }>;
+  alias?: string | string[];
+  author?: Array<{ name?: string; alias?: string; path_word?: string }>;
   popular?: number;
   datetime_updated?: string;
   last_chapter_name?: string;
@@ -87,7 +88,8 @@ export type RankApiBook = {
   name?: string;
   path_word?: string;
   cover?: string;
-  author?: Array<{ name?: string }>;
+  alias?: string | string[];
+  author?: Array<{ name?: string; alias?: string; path_word?: string }>;
   popular?: number;
   theme?: Array<{ name?: string }>;
 };
